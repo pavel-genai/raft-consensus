@@ -11,5 +11,6 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
+      - uses: sbt/setup-sbt@v1
       - run: sbt compile
       - run: sbt test
