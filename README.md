@@ -1,5 +1,7 @@
 # Raft Consensus
 
+[![CI](https://github.com/pavel-genai/raft-consensus/actions/workflows/ci.yml/badge.svg)](https://github.com/pavel-genai/raft-consensus/actions/workflows/ci.yml)
+
 A Scala 3 implementation of the Raft consensus protocol using Akka actors.
 
 ## Features
