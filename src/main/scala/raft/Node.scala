@@ -1,12 +1,12 @@
 package raft
 
-import akka.actor.typed.{ActorRef, Behavior, SupervisorStrategy}
-import akka.actor.typed.scaladsl.{ActorContext, Behaviors, TimerScheduler}
+import org.apache.pekko.actor.typed.{ActorRef, Behavior, SupervisorStrategy}
+import org.apache.pekko.actor.typed.scaladsl.{ActorContext, Behaviors, TimerScheduler}
 import scala.concurrent.duration.*
 import scala.util.Random
 
 /**
- * A single Raft node implemented as an Akka Typed actor.
+ * A single Raft node implemented as a Pekko Typed actor.
  *
  * The node transitions between Follower, Candidate, and Leader roles
  * according to the Raft protocol.

@@ -1,6 +1,6 @@
 package raft
 
-import akka.actor.typed.ActorRef
+import org.apache.pekko.actor.typed.ActorRef
 
 /** All messages that a Raft node can receive. */
 sealed trait RaftMessage

@@ -1,8 +1,8 @@
 package raft
 
-import akka.actor.typed.{ActorRef, ActorSystem}
-import akka.actor.typed.scaladsl.AskPattern.*
-import akka.util.Timeout
+import org.apache.pekko.actor.typed.{ActorRef, ActorSystem}
+import org.apache.pekko.actor.typed.scaladsl.AskPattern.*
+import org.apache.pekko.util.Timeout
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration.*
 import scala.io.StdIn

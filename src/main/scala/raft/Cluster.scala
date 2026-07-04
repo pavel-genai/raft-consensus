@@ -1,11 +1,11 @@
 package raft
 
-import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
-import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
+import org.apache.pekko.actor.typed.{ActorRef, ActorSystem, Behavior}
+import org.apache.pekko.actor.typed.scaladsl.{ActorContext, Behaviors}
 import scala.concurrent.duration.*
 import scala.concurrent.{Await, Future}
-import akka.actor.typed.scaladsl.AskPattern.*
-import akka.util.Timeout
+import org.apache.pekko.actor.typed.scaladsl.AskPattern.*
+import org.apache.pekko.util.Timeout
 
 /**
  * Messages understood by the cluster guardian actor.
