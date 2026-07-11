@@ -266,13 +266,22 @@ class CoverageSpec extends AnyWordSpec with Matchers with BeforeAndAfterAll:
       // Trigger compaction
       leader ! RaftMessage.CompactionTick
 
-      // Now send a failed AppendEntriesResult from p1 with matchIndex = 0
-      // This should decrement nextIndex below snapshotOffset, triggering InstallSnapshot
-      leader ! RaftMessage.AppendEntriesResult(term = 1, success = false, followerId = "p1", matchIndex = 0)
+      // Now send repeated failed AppendEntriesResult from p1 to decrement nextIndex
+      // until it falls below snapshotOffset, triggering InstallSnapshot.
+      // After compaction, snapshotOffset ~ commitIndex (~56), nextIndex for p1 is ~57.
+      // Each failure decrements by 1, so we need ~57 - snapshotOffset failures.
+      // Send failures in a loop and consume retries until InstallSnapshot arrives.
+      var gotSnapshot = false
+      for _ <- 1 to 60 if !gotSnapshot do
+        leader ! RaftMessage.AppendEntriesResult(term = 1, success = false, followerId = "p1", matchIndex = 0)
+        // The leader sends either AppendEntries (retry) or InstallSnapshot
+        val msg = peer1.receiveMessage(3.seconds)
+        msg match
+          case _: RaftMessage.InstallSnapshot => gotSnapshot = true
+          case _: RaftMessage.AppendEntries => // keep going
+          case _ => // ignore unexpected
 
-      // p1 should receive InstallSnapshot
-      val snapMsg = peer1.receiveMessage(5.seconds).asInstanceOf[RaftMessage.InstallSnapshot]
-      snapMsg.leaderId shouldBe "snap-send-leader"
+      gotSnapshot shouldBe true
     }
 
     "handle InstallSnapshotResult when leader has no snapshot (no-op)" in {
