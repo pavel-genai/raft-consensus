@@ -9,6 +9,83 @@ import scala.io.StdIn
 import scala.util.{Failure, Success, Try}
 
 /**
+ * CLI helper functions for the Raft cluster.
+ * Extracted from Main to allow unit testing without stdin.
+ */
+object Cli:
+
+  /** Parse a command line into a structured command. */
+  def parseCommand(line: String): CliCommand =
+    val parts = line.trim.split("\\s+").toList
+    parts match
+      case "put" :: key :: value :: Nil    => PutCmd(key, value)
+      case "get" :: key :: Nil             => GetCmd(key)
+      case "delete" :: key :: Nil          => DeleteCmd(key)
+      case "status" :: Nil                 => StatusCmd
+      case "help" :: Nil                   => HelpCmd
+      case "quit" :: Nil | "exit" :: Nil   => QuitCmd
+      case Nil | ("" :: Nil)               => NoopCmd
+      case _                                => UnknownCmd
+
+  /** Format a client response for display. */
+  def formatResponse(cmd: CliCommand, resp: RaftMessage.ClientResponse, leaderId: String): String =
+    (cmd, resp) match
+      case (PutCmd(key, value), RaftMessage.ClientOk(_)) =>
+        s"  OK: $key = $value (via leader $leaderId)"
+      case (PutCmd(_, _), RaftMessage.ClientRedirect(leader)) =>
+        s"  Redirected to $leader"
+      case (PutCmd(_, _), RaftMessage.ClientError(msg)) =>
+        s"  Error: $msg"
+      case (GetCmd(key), RaftMessage.ClientOk(Some(v))) =>
+        s"  $key = $v"
+      case (GetCmd(key), RaftMessage.ClientOk(None)) =>
+        s"  $key not found"
+      case (GetCmd(_), RaftMessage.ClientRedirect(leader)) =>
+        s"  Redirected to $leader"
+      case (GetCmd(_), RaftMessage.ClientError(msg)) =>
+        s"  Error: $msg"
+      case (DeleteCmd(key), RaftMessage.ClientOk(_)) =>
+        s"  OK: deleted $key (via leader $leaderId)"
+      case (DeleteCmd(_), other) =>
+        s"  $other"
+      case _ => ""
+
+  /** Format a node state for the status display. */
+  def formatNodeState(resp: RaftMessage.NodeStateResponse): String =
+    f"  ${resp.nodeId}%-10s role=${resp.role}%-10s term=${resp.term}%-4d " +
+    f"commit=${resp.commitIndex}%-4d log=${resp.logSize}%-4d leader=${resp.currentLeader.getOrElse("?")}"
+
+  /** Format an unreachable node. */
+  def formatUnreachable(nodeId: String): String =
+    f"  $nodeId%-10s UNREACHABLE"
+
+  /** Help text. */
+  val helpText: String =
+    """
+      |Commands:
+      |  put <key> <value>  - Store a key-value pair
+      |  get <key>          - Retrieve a value by key
+      |  delete <key>       - Delete a key
+      |  status             - Show cluster status
+      |  help               - Show this help
+      |  quit               - Exit
+      |""".stripMargin
+
+  /** No leader message. */
+  val noLeaderMsg: String = "  No leader found. The cluster may still be electing."
+
+/** Parsed CLI commands. */
+enum CliCommand:
+  case PutCmd(key: String, value: String)
+  case GetCmd(key: String)
+  case DeleteCmd(key: String)
+  case StatusCmd
+  case HelpCmd
+  case QuitCmd
+  case NoopCmd
+  case UnknownCmd
+
+/**
  * CLI entry point that spins up a 5-node Raft cluster in a single JVM
  * and lets the user send key-value commands to the leader.
  */
@@ -19,84 +96,56 @@ import scala.util.{Failure, Success, Try}
   given Timeout = Timeout(3.seconds)
   import system.executionContext
 
-  // Wait for a leader to be elected
   println("Waiting for leader election...")
   Thread.sleep(2000)
 
   var running = true
-  printHelp()
+  print(Cli.helpText)
 
   while running do
     print("raft> ")
     val line = StdIn.readLine()
     if line == null then running = false
     else
-      val parts = line.trim.split("\\s+").toList
-      parts match
-        case "put" :: key :: value :: Nil =>
+      Cli.parseCommand(line) match
+        case cmd: PutCmd =>
           withLeader { (leaderId, leaderRef) =>
             val resp = Await.result(
               leaderRef.ask[RaftMessage.ClientResponse](r =>
-                RaftMessage.ClientRequest(Command.Put(key, value), r)
+                RaftMessage.ClientRequest(Command.Put(cmd.key, cmd.value), r)
               ),
               3.seconds
             )
-            resp match
-              case RaftMessage.ClientOk(_) =>
-                println(s"  OK: $key = $value (via leader $leaderId)")
-              case RaftMessage.ClientRedirect(leader) =>
-                println(s"  Redirected to $leader")
-              case RaftMessage.ClientError(msg) =>
-                println(s"  Error: $msg")
+            println(Cli.formatResponse(cmd, resp, leaderId))
           }
 
-        case "get" :: key :: Nil =>
+        case cmd: GetCmd =>
           withLeader { (leaderId, leaderRef) =>
             val resp = Await.result(
               leaderRef.ask[RaftMessage.ClientResponse](r =>
-                RaftMessage.ClientQuery(key, r)
+                RaftMessage.ClientQuery(cmd.key, r)
               ),
               3.seconds
             )
-            resp match
-              case RaftMessage.ClientOk(Some(v)) =>
-                println(s"  $key = $v")
-              case RaftMessage.ClientOk(None) =>
-                println(s"  $key not found")
-              case RaftMessage.ClientRedirect(leader) =>
-                println(s"  Redirected to $leader")
-              case RaftMessage.ClientError(msg) =>
-                println(s"  Error: $msg")
+            println(Cli.formatResponse(cmd, resp, leaderId))
           }
 
-        case "delete" :: key :: Nil =>
+        case cmd: DeleteCmd =>
           withLeader { (leaderId, leaderRef) =>
             val resp = Await.result(
               leaderRef.ask[RaftMessage.ClientResponse](r =>
-                RaftMessage.ClientRequest(Command.Delete(key), r)
+                RaftMessage.ClientRequest(Command.Delete(cmd.key), r)
               ),
               3.seconds
             )
-            resp match
-              case RaftMessage.ClientOk(_) =>
-                println(s"  OK: deleted $key (via leader $leaderId)")
-              case other =>
-                println(s"  $other")
+            println(Cli.formatResponse(cmd, resp, leaderId))
           }
 
-        case "status" :: Nil =>
-          printClusterStatus()
-
-        case "help" :: Nil =>
-          printHelp()
-
-        case "quit" :: Nil | "exit" :: Nil =>
-          running = false
-
-        case Nil | ("" :: Nil) => // ignore empty input
-
-        case _ =>
-          println(s"  Unknown command. Type 'help' for usage.")
+        case StatusCmd => printClusterStatus()
+        case HelpCmd   => print(Cli.helpText)
+        case QuitCmd   => running = false
+        case NoopCmd   => // ignore
+        case UnknownCmd => println("  Unknown command. Type 'help' for usage.")
 
   println("Shutting down cluster...")
   system.terminate()
@@ -114,9 +163,9 @@ import scala.util.{Failure, Success, Try}
     Cluster.findLeader(nodesResp.nodes) match
       case Some((id, ref)) => Try(f(id, ref)) match
         case Failure(ex) => println(s"  Error: ${ex.getMessage}")
-        case Success(_)  => // ok
+        case Success(_)  => ()
       case None =>
-        println("  No leader found. The cluster may still be electing.")
+        println(Cli.noLeaderMsg)
 
   def printClusterStatus()(
       using system: ActorSystem[ClusterCommand], timeout: Timeout
@@ -132,20 +181,8 @@ import scala.util.{Failure, Success, Try}
           ref.ask[RaftMessage.NodeStateResponse](r => RaftMessage.GetState(r)),
           2.seconds
         )
-        println(f"  ${resp.nodeId}%-10s role=${resp.role}%-10s term=${resp.term}%-4d " +
-          f"commit=${resp.commitIndex}%-4d log=${resp.logSize}%-4d leader=${resp.currentLeader.getOrElse("?")}")
-      }.recover { case ex =>
-        println(f"  $id%-10s UNREACHABLE")
+        println(Cli.formatNodeState(resp))
+      }.recover { case _ =>
+        println(Cli.formatUnreachable(id))
       }
     }
-
-  def printHelp(): Unit =
-    println("""
-      |Commands:
-      |  put <key> <value>  - Store a key-value pair
-      |  get <key>          - Retrieve a value by key
-      |  delete <key>       - Delete a key
-      |  status             - Show cluster status
-      |  help               - Show this help
-      |  quit               - Exit
-      |""".stripMargin)
