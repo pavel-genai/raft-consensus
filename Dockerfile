@@ -1,13 +1,12 @@
-FROM eclipse-temurin:17-jdk AS build
+FROM sbtscala/scala-sbt:eclipse-temurin-17_1.x AS build
 WORKDIR /app
 COPY project/ project/
 COPY build.sbt ./
-RUN sbt --client compile || true
+RUN sbt update
 COPY src/ src/
 RUN sbt compile
 
-FROM eclipse-temurin:17-jdk
+FROM sbtscala/scala-sbt:eclipse-temurin-17_1.x
 WORKDIR /app
 COPY --from=build /app/ ./
-EXPOSE 0
 CMD ["sbt", "run"]
