@@ -18,14 +18,14 @@ object Cli:
   def parseCommand(line: String): CliCommand =
     val parts = line.trim.split("\\s+").toList
     parts match
-      case "put" :: key :: value :: Nil    => PutCmd(key, value)
-      case "get" :: key :: Nil             => GetCmd(key)
-      case "delete" :: key :: Nil          => DeleteCmd(key)
-      case "status" :: Nil                 => StatusCmd
-      case "help" :: Nil                   => HelpCmd
-      case "quit" :: Nil | "exit" :: Nil   => QuitCmd
-      case Nil | ("" :: Nil)               => NoopCmd
-      case _                                => UnknownCmd
+      case "put" :: key :: value :: Nil    => CliCommand.PutCmd(key, value)
+      case "get" :: key :: Nil             => CliCommand.GetCmd(key)
+      case "delete" :: key :: Nil          => CliCommand.DeleteCmd(key)
+      case "status" :: Nil                 => CliCommand.StatusCmd
+      case "help" :: Nil                   => CliCommand.HelpCmd
+      case "quit" :: Nil | "exit" :: Nil   => CliCommand.QuitCmd
+      case Nil | ("" :: Nil)               => CliCommand.NoopCmd
+      case _                                => CliCommand.UnknownCmd
 
   /** Format a client response for display. */
   def formatResponse(cmd: CliCommand, resp: RaftMessage.ClientResponse, leaderId: String): String =
@@ -108,7 +108,7 @@ enum CliCommand:
     if line == null then running = false
     else
       Cli.parseCommand(line) match
-        case cmd: PutCmd =>
+        case cmd: CliCommand.PutCmd =>
           withLeader { (leaderId, leaderRef) =>
             val resp = Await.result(
               leaderRef.ask[RaftMessage.ClientResponse](r =>
@@ -119,7 +119,7 @@ enum CliCommand:
             println(Cli.formatResponse(cmd, resp, leaderId))
           }
 
-        case cmd: GetCmd =>
+        case cmd: CliCommand.GetCmd =>
           withLeader { (leaderId, leaderRef) =>
             val resp = Await.result(
               leaderRef.ask[RaftMessage.ClientResponse](r =>
@@ -130,7 +130,7 @@ enum CliCommand:
             println(Cli.formatResponse(cmd, resp, leaderId))
           }
 
-        case cmd: DeleteCmd =>
+        case cmd: CliCommand.DeleteCmd =>
           withLeader { (leaderId, leaderRef) =>
             val resp = Await.result(
               leaderRef.ask[RaftMessage.ClientResponse](r =>
@@ -141,11 +141,11 @@ enum CliCommand:
             println(Cli.formatResponse(cmd, resp, leaderId))
           }
 
-        case StatusCmd => printClusterStatus()
-        case HelpCmd   => print(Cli.helpText)
-        case QuitCmd   => running = false
-        case NoopCmd   => // ignore
-        case UnknownCmd => println("  Unknown command. Type 'help' for usage.")
+        case CliCommand.StatusCmd => printClusterStatus()
+        case CliCommand.HelpCmd   => print(Cli.helpText)
+        case CliCommand.QuitCmd   => running = false
+        case CliCommand.NoopCmd   => ()
+        case CliCommand.UnknownCmd => println("  Unknown command. Type 'help' for usage.")
 
   println("Shutting down cluster...")
   system.terminate()
